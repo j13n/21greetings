@@ -1,3 +1,3 @@
-Greetings!
-
-{{message}}
+You've received a Bitcoin powered greeting card!
+Title: {{title}}
+Message: {{message}}
