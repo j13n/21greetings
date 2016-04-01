@@ -95,7 +95,7 @@ class Greeting(db.Model):
             characters and a (lenient) check whether a valid e-mail adres was used.
             '''
             try:
-                re.match(r'\w{1-1024}')
+                re.match(r'[\w+\s]{1-1024}', data['message'])
             except:
                 raise ValidationError('Message is to short or to long, maximum of 1024 characters is allowed.')
                 abort()

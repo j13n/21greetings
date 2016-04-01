@@ -47,6 +47,9 @@ def index():
         else:
             flash('Your Birthday message was sent to: {}'.format(form.email.data))
             return redirect(url_for('.index'))
+    else:
+        for field, errors in form.errors.items():
+            flash('Error in the {} field: {}'.format(getattr(form, field).label.text, errors))
     return render_template('base.html', form=form)
 
 
