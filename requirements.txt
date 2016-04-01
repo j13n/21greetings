@@ -13,3 +13,4 @@ blinker==1.4
 gunicorn==19.4.5
 itsdangerous==0.24
 python-editor==0.5
+Flask-Bootstrap==3.3.5.7
