@@ -1,0 +1,33 @@
+{% extends "bootstrap/base.html" %} {% import "bootstrap/wtf.html" as wtf %} {% block navbar %}
+<nav class="navbar navbar-inverse navbar-fixed-top">
+  <div class="container">
+    <div class="navbar-header">
+      <a class="navbar-brand" href="#">21Greetings</a>
+    </div>
+  </div>
+</nav>
+{% endblock %} {% block content %}
+<div class="col-md-6 col-md-offset-3" style="margin-top: 70px;">
+  <form method="POST">
+    {{ form.csrf_token }}
+    <div class="form-group" style="margin-top: 20px;">
+      {{ form.message(rows=10, **{'class':'form-control', 'placeholder':'Enter your message here.'}) }}
+    </div>
+    <div class="form-group" style="margin-top: 2px;">
+      {{ form.email(**{'class':'form-control col-sm-6', 'placeholder':'Enter the recipient email here.'}) }}
+    </div>
+    <div class="col-md-4 col-md-offset-4" style="margin-top: 20px;">
+      {{ form.submit(**{'class':'btn-primary form-control'}) }}
+    </div>
+  </form>
+</div>
+
+<div class="col-md-6 col-md-offset-3" style="margin-top: 10px;">
+  {% for message in get_flashed_messages() %}
+  <div class="alert alert-warning">
+    <button type="button" class="close" data-dismiss="alert">&times;</button>
+    {{ message }}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

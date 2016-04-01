@@ -1,0 +1,17 @@
+info:
+  title: '21Greetings'
+  description: 'Send a greeting card for bitcoin.'
+  x-21-quick-buy:
+  x-21-category:
+  x-21-app-image:
+  x-21-total-price:
+    min: 3000
+    max: 3000
+  contact:
+    name: Jon
+    email: janusz@outlook.com
+host:
+schemes:
+  - http
+basePath: /
+x-21-manifest-path: /manifest

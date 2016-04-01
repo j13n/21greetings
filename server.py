@@ -1,11 +1,13 @@
 import os, re
 from datetime import datetime
 from threading import Thread
-from flask import Flask, url_for, jsonify, request, render_template
-from flask.ext.script import Manager
+from flask import Flask, url_for, jsonify, request, render_template, abort
 from flask.ext.sqlalchemy import SQLAlchemy
-from flask.ext.migrate import Migrate, MigrateCommand
 from flask.ext.mail import Mail, Message
+
+### import from the 21 Bitcoin Developer Library
+from two1.lib.wallet import Wallet
+from two1.lib.bitserv.flask import Payment
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 db_path = os.path.join(basedir, 'data.sqlite')
@@ -22,35 +24,15 @@ app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
 
 ### Instanciate modules:
-manager = Manager(app)
+wallet = Wallet()
+payment = Payment(app, wallet)
 db = SQLAlchemy(app)
-migrate = Migrate(app, db)
-manager.add_command('db', MigrateCommand)
 mail = Mail(app)
 
 ### Send e-mail asynchronously:
 def send_async_email(app, msg):
     with app.app_context():
         mail.send(msg)
-
-### Command to generate greeting cards, new greeting cards can be added later:
-@manager.command
-def create_cards():
-    db.create_all()
-    from sqlalchemy.exc import IntegrityError
-    GREETING_CARDS = (
-        ['Greeting card with a theme for general messages.', 'general'],
-        ['Greeting card with a theme for romantic messages.', 'iloveyou'],
-        ['Greeting card with a theme for birthday messages.', 'birthday'])
-    for g in GREETING_CARDS:
-        card = GreetingCard.query.filter_by(template=g[1]).first()
-        if card is None:
-            card = GreetingCard(description=g[0], template=g[1])
-            db.session.add(card)
-            try:
-                db.session.commit()
-            except IntegrityError:
-                db.session.rollback()
 
 ### Error handlers:
 class ValidationError(ValueError):
@@ -84,30 +66,10 @@ def internal_server_error(e):
     response.status_code = 500
     return response
 
-### Models:
-class GreetingCard(db.Model):
-    __tablename__ = "greetingcards"
-    id = db.Column(db.Integer, primary_key=True)
-    description = db.Column(db.Text, unique=True)
-    template = db.Column(db.String(64), unique=True)
-    greetings = db.relationship('Greeting', backref='greetingcards', lazy='dynamic')
-
-    def get_url(self):
-        return url_for('get_greeting_card', id=self.id, _external=True)
-
-    def export_data(self):
-        return {
-            'description': self.description,
-            'template': self.template,
-            'self_url': self.get_url()
-            }
-
 class Greeting(db.Model):
     __tablename__ = 'greetings'
     id = db.Column(db.Integer, primary_key=True)
-    greeting_card = db.Column(db.Integer, db.ForeignKey('greetingcards.id'))
-    title = db.Column(db.String(128))
-    message = db.Column(db.String(512))
+    message = db.Column(db.Text)
     email = db.Column(db.String(64))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -115,8 +77,11 @@ class Greeting(db.Model):
         return url_for('greeting', id=self.id, _external=True)
 
     def export_data(self):
+        '''
+        This is the function to export data. To respect user's privacy I decided
+        not to return the actual messages themselves.
+        '''
         return {
-        'greeting_card': self.greeting_card,
         'created_at': self.created_at,
         'self_url': self.get_url()
         }
@@ -126,11 +91,14 @@ class Greeting(db.Model):
             '''
             This is the only function that actually imports external / user
             data. Since you should never trust external input, regular
-            expressions are used to remove all but alphanumeric and underscore
+            expression is used to remove all but alphanumeric and underscore
             characters and a (lenient) check whether a valid e-mail adres was used.
             '''
-            self.greeting_card = data['greeting_card']
-            self.title = re.sub(r'\W', ' ', data['title'])
+            try:
+                re.match(r'\w{1-1024}')
+            except:
+                raise ValidationError('Message is to short or to long, maximum of 1024 characters is allowed.')
+                abort()
             self.message = re.sub(r'\W', ' ', data['message'])
             try:
                 re.match(r'[^@]+@[^@]+\.[^@]+', data['email'])
@@ -142,15 +110,6 @@ class Greeting(db.Model):
         return self
 
 ### Routes:
-@app.route('/greetingcards/', methods=['GET'])
-def get_greeting_cards():
-    return jsonify({'greetingcards': [greeting_card.get_url() for greeting_card
-                                        in GreetingCard.query.all()]})
-
-@app.route('/greetingcard/<int:id>', methods=['GET'])
-def get_greeting_card(id):
-    return jsonify(GreetingCard.query.get_or_404(id).export_data())
-
 @app.route('/greetings/', methods=['GET'])
 def greetings():
     return jsonify({'greetings': [greetings.get_url() for greetings
@@ -166,6 +125,7 @@ def greeting(id):
     return jsonify(Greeting.query.get_or_404(id).export_data())
 
 @app.route('/greeting/', methods=['POST'])
+@payment.required(1000)
 def new_greeting():
     '''
     This is the only route where a POST method is allowed. First the request is
@@ -176,14 +136,30 @@ def new_greeting():
     greeting.import_data(request.json)
     db.session.add(greeting)
     db.session.commit()
-    template = GreetingCard.query.filter_by(id=greeting.greeting_card).first().template
-    msg = Message(subject='You have received a Bitcoin powered greeting!',
+    msg = Message(subject='You have received a 21 / Bitcoin powered Birtday greeting!',
                     sender='greeting@21projects.xyz', recipients=[greeting.email])
-    msg.body = render_template(template + '.txt', title=greeting.title, message=greeting.message)
-    msg.html = render_template(template + '.html', title=greeting.title, message=greeting.message)
+    msg.body = render_template('birthday.txt', message=greeting.message)
+    msg.html = render_template('birthday.html', message=greeting.message)
     thr = Thread(target=send_async_email, args=[app, msg])
     thr.start()
     return jsonify({'Location': greeting.get_url()}), 201
 
+@app.route('/manifest')
+def docs():
+    '''
+    Serves the app manifest to the 21 crawler.
+    '''
+    with open('manifest.yaml', 'r') as f:
+        manifest_yaml = yaml.load(f)
+    return json.dumps(manifest_yaml)
+
+@app.route('/client')
+def client():
+    '''
+    Provides an example client script.
+    '''
+    return send_from_directory('static', '21greetings-client.py')
+
 if __name__ == '__main__':
-    manager.run()
+    db.create_all()
+    app.run(port=8080)
